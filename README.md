@@ -3,14 +3,18 @@
 Se va implementa un program ce va scana toate adresele IP dintr-un interval specificat de
 utilizator și va afișa care IP-uri reprezintă sisteme active și de asemenea pe ce port sunt acestea
 active.
-- Utilizatorul va putea specifica următorii parametrii:
+Utilizatorul va putea specifica următorii parametrii:
+
 o Intervalul de adrese IP
+
 o O listă de porturi sau un interval de porturi ce vor fi scanate
+
 
 **Implementarea acestui mecanism consta in urmatoarele lucruri:**
 - se vor scana toate adresele IP introduse de uitlizator
 - pentru fiecare adresa IP se va crea un thread detached, pentru ca scanarea adreselor sa se faca in paralel, utilizand paradigma de "multithreading"
 - pentru fiecare thread creat se va apela functia "verificare_adresa_ip_activa()", in aceasta functie se va creea un socket de tip client.
+  
 **Optimizare:**  daca adresa IP nu este activa, functia connect() poate avea un timeout mare implicit, iar pentru a evita acest lucru am setat un timeout de 5 secunde folosind functia setsockopt().
 
 
