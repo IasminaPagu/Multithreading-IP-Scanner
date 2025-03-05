@@ -33,21 +33,23 @@ inseamna ca pentru ultimul octet, adica b4 si b44, nu vom avea voie sa accesam :
 */
 #define MAX_PORTS 100
 #define MAX_THREADS 10
+char ip_adresses[100000][100]; // acesta este vectorul meu de adrese ip, care este declarat ca si o matrice, deoarece la fiecare index, am o adresa ip de tip char[100]
+int dim = 0;                   // dimensiunea vectorului de adrese ip
 sem_t sem ;
 pthread_t threads[100];
 volatile int threaduri_parcurse = 0;
+int verificare_finalizare_threaduri[100];
 
 
+// campurile/atributele thread-urilor
 typedef struct thread_arg{
     int index;
     int nr_porturi;
     int lista_porturi[MAX_PORTS];
 } thread_arg;
 
-char ip_adresses[100000][100]; // acesta este vectorul meu de adrese ip, care este declarat ca si o matrice, deoarece la fiecare index, am o adresa ip de tip char[100]
-int dim = 0;                   // dimensiunea vectorului de adrese ip
-int nr_threads = 0;
-
+// functie pentru separarea adreselor ip introduse de utilizator
+// pentru a vedea cate adrese ip trebuie verificate
 void separe_bytes_adresa_ip(char adresa[100], int *b1, int *b2, int *b3, int *b4)
 {
     *b1 = atoi(strtok(adresa, "."));
@@ -132,6 +134,12 @@ void generare_adrese_ip(int b1, int b11, int b2, int b22, int b3, int b33, int b
         }
     }
 }
+// in aceasta functie creeaza un socket de tip client pentru a verifica daca o adresa IP este activa pe un anumit port
+// Optimizare: daca adresa IP nu este activa, functia connect() poate avea un timeout mare implicit, iar pentru a evita acest lucru
+// am setat un timeout de 5 secunde folosind setsockopt()
+
+
+// functia verifica daca un server raspunde pe un anumit port
 void verificare_adresa_ip_activa(char adresa_ip[], int port)
 {
     int sockfd;                                         // file descriptor pentru socket
@@ -188,18 +196,21 @@ void *thread_function(void *arg)
         perror(NULL);
         exit(EXIT_FAILURE);
     }
+    verificare_finalizare_threaduri[t.index] = 1;
+    // adica thread-ul cu indexul threaduri_parcurse si a terminat executia
     free(arg);
     return NULL;
 }
+// cat timp numarul de thread-uri parcurse < dimensiunea vectorului de adrese ip
+// adica atata timp cat nu am parcurs toate adresele ip, fac logica
 
-void afisare_adrese_ip()
-{
-    for (int i = 0; i < dim; i++)
-    {
-        printf("%s\n", ip_adresses[i]);
-    }
-    printf("\n");
-}
+
+// logica consta asa :
+// inainte sa fac pthread_create verific daca mai exista locuri disponibile, adica daca mai pot sa creez un alt thread sau am atins limita de threaduri
+// testarea aceasta se face prin intermediul unui semnal
+// daca sunt in primul caz: se poate crea inca un thread => setez atributele corespunzatoare + apelez functia pthread_create
+// daca sunt in al doilea caz: nu mai exista locuri disponibile => astept pana cand se termina executia unui thread 
+// (prin intermediul semnalului, care face aceasta blocare implicit) si dupa ajung din nou la creare thread-ului cu atributele corespunzatoare
 void implementare(int nr_port,int lista_port[100]){
     while(threaduri_parcurse < dim){
         if (sem_wait(&sem) < 0)
@@ -232,30 +243,44 @@ void implementare(int nr_port,int lista_port[100]){
             perror("");
             exit(-13);
         }
+        verificare_finalizare_threaduri[t->index] = 0;
         pthread_create(&threads[threaduri_parcurse], &attr, thread_function, (void *)t);
         printf("thread-uri parcurse este %d\n",threaduri_parcurse);
         threaduri_parcurse++;
     }
-    //daca sem == 0, inseamna ca nu mai exista locuri libere in 
-    //ideea e asa
-    //inainte sa fac pthread_create verific daca mai exista locuri disponibile
-    //daca nu mai exista locuri astept
-
+    //daca sem == 0, inseamna ca s a creat numarul maxim de thread-uri => astept
     //in functia thread_funcion dupa ce fac verificarea respectiva, incrementez semaforul
     //=> o sa se stie ca poate sa se creeze un alt thread
 
     // eu o sa folosc sem_wait in aceasta functie
     //si sem_post in thread_function
-
-    // sem_wait() decrements(locks) the semaphore pointed to by sem.
-    // If the semaphore's value is greater than zero, then the decrement proceeds, and the function returns, immediately.
-    // If the semaphore currently has the value zero, then the call blocks until either it becomes possible to perform the decrement
-    // (i.e., the semaphore value rises above zero), or a signal handler interrupts the call.
-
-    // sem_post() increments(unlocks) the semaphore pointed to by sem.If the semaphore's value consequently be‐ comes greater than zero, 
-    // then another process or thread blocked in a sem_wait(3) call will be woken up and
-    // proceed to lock the semaphore.
 }
+void afisare_adrese_ip()
+{
+    for (int i = 0; i < dim; i++)
+    {
+        printf("%s\n", ip_adresses[i]);
+    }
+    printf("\n");
+}
+// in aceasta functie verific daca toate thread-urile detached si au terminat executia, daca da, 
+// functia returneaza 1 => pot sa ies din bucla while din main si sa inchei executia
+// altfel, functia returneaza 0 si raman in bucla infinita while din main
+int verificare_finish_all_detached_threads(){
+    int OK = 0;
+    for(int i = 0;i<dim;i++){
+            OK = 1;
+            if(verificare_finalizare_threaduri[i] == 0){
+                //inseamna ca thread-ul cu indexul i nu si a terminat executia => trebuie sa astept in continuare
+                OK = 0;
+            }
+        }
+    if(OK == 1){
+        return 0;
+    }
+    return 1;
+}
+
 int main(int argc, char *argv[])
 {
 
@@ -332,8 +357,11 @@ int main(int argc, char *argv[])
         exit(-14);
     }
     implementare(nr_port,lista_port);
-   
-    sleep(200);
+    // in momemntul in care finish = 0, inseamna ca toate thread-urile au terminat executia programului adica se poate incheia programul
+    int finish = 1;
+    while(finish){
+        finish = verificare_finish_all_detached_threads();
+    }
     sem_destroy(&sem);
     return 0;
 }
