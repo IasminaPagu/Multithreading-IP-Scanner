@@ -20,19 +20,30 @@ o O listă de porturi sau un interval de porturi ce vor fi scanate
   
 **Compilare si rulare**
 gcc -Wall -o p implementare.c
+
 ./p
+
 introduceti adresa ip de inceput
+
 142.251.208.110
+
 introduceti adresa ip de final
+
 142.251.208.119
+
 daca doriti sa introduceti porturi rand pe rand, apasati tasta 1, altfel, daca doriti sa introduceti o lista de porturi, apasati tasta 2
+
 1
 introduceti nr de porturi = 
+
 3
 
 
+
 port[0] este = 80
+
 port[1] este = 443
+
 port[2] este = 20
 
 
